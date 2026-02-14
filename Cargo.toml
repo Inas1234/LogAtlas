@@ -1,0 +1,11 @@
+[package]
+name = "log-atlas"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = "0.27"
+anyhow = "1"
+minidump = "0.21"
+rfd = "0.14"
+time = "0.3"
