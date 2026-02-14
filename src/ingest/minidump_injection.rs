@@ -17,17 +17,16 @@ pub fn detect_injected_regions(
         // Fallback: we can still flag thread entrypoints that start outside any loaded module.
         let mut by_start: HashMap<u64, Vec<String>> = HashMap::new();
         for t in threads {
-            let Some(start) = t.start_address else { continue };
+            let Some(start) = t.start_address else {
+                continue;
+            };
             if addr_in_any(&module_ranges, start) {
                 continue;
             }
-            by_start
-                .entry(start)
-                .or_default()
-                .push(format!(
-                    "thread start outside modules: tid=0x{:X} start=0x{:016X}",
-                    t.thread_id, start
-                ));
+            by_start.entry(start).or_default().push(format!(
+                "thread start outside modules: tid=0x{:X} start=0x{:016X}",
+                t.thread_id, start
+            ));
         }
 
         let mut out: Vec<InjectedRegion> = by_start
@@ -75,12 +74,16 @@ pub fn detect_injected_regions(
     for region in meminfo.iter() {
         // We focus on committed private pages with executable protection that do not overlap
         // a loaded module. This is a common shape for injected code/shellcode or JIT output.
-        let committed = region.state.contains(minidump::format::MemoryState::MEM_COMMIT);
+        let committed = region
+            .state
+            .contains(minidump::format::MemoryState::MEM_COMMIT);
         if !committed {
             continue;
         }
 
-        let is_private = region.ty.contains(minidump::format::MemoryType::MEM_PRIVATE);
+        let is_private = region
+            .ty
+            .contains(minidump::format::MemoryType::MEM_PRIVATE);
         if !is_private {
             continue;
         }
@@ -123,11 +126,15 @@ pub fn detect_injected_regions(
     // Thread entrypoints are a strong pivot: if a thread starts outside any loaded module and
     // in a private executable allocation, that looks like classic injection (CreateRemoteThread).
     for t in threads {
-        let Some(start) = t.start_address else { continue };
+        let Some(start) = t.start_address else {
+            continue;
+        };
         if addr_in_any(&module_ranges, start) {
             continue;
         }
-        let Some(mi) = meminfo.memory_info_at_address(start) else { continue };
+        let Some(mi) = meminfo.memory_info_at_address(start) else {
+            continue;
+        };
         let alloc_base = mi.raw.allocation_base;
 
         let e = acc.entry(alloc_base).or_insert_with(|| Accum {
@@ -155,7 +162,9 @@ pub fn detect_injected_regions(
         if addr_in_any(&module_ranges, addr) {
             continue;
         }
-        let Some(mi) = meminfo.memory_info_at_address(addr) else { continue };
+        let Some(mi) = meminfo.memory_info_at_address(addr) else {
+            continue;
+        };
         let alloc_base = mi.raw.allocation_base;
         let e = acc.entry(alloc_base).or_insert_with(|| Accum {
             risk: Severity::Warning,
@@ -212,7 +221,10 @@ fn risk_rank(s: Severity) -> u8 {
 fn is_executable(p: minidump::format::MemoryProtection) -> bool {
     use minidump::format::MemoryProtection as MP;
     p.intersects(
-        MP::PAGE_EXECUTE | MP::PAGE_EXECUTE_READ | MP::PAGE_EXECUTE_READWRITE | MP::PAGE_EXECUTE_WRITECOPY,
+        MP::PAGE_EXECUTE
+            | MP::PAGE_EXECUTE_READ
+            | MP::PAGE_EXECUTE_READWRITE
+            | MP::PAGE_EXECUTE_WRITECOPY,
     )
 }
 

@@ -196,7 +196,10 @@ fn overview(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
         ui.monospace(format!("thread_id=0x{:X}", exc.thread_id));
         ui.monospace(format!("code=0x{:08X}", exc.code));
         ui.monospace(format!("address=0x{:016X}", exc.address));
-        ui.monospace(format!("flags=0x{:08X} params={}", exc.flags, exc.number_parameters));
+        ui.monospace(format!(
+            "flags=0x{:08X} params={}",
+            exc.flags, exc.number_parameters
+        ));
     } else {
         ui.label("No exception stream present.");
     }
@@ -209,112 +212,109 @@ fn processes(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
     };
 
     ui.push_id("processes_tab", |ui| {
-    ui.label(egui::RichText::new("Process").strong());
-    if let Some(p) = &report.process {
-        if let Some(img) = &p.main_image {
-            ui.monospace(format!("image={img}"));
-        }
-        if let Some(v) = &p.main_image_version {
-            ui.monospace(format!("version={v}"));
-        }
-        if let Some(pid) = p.pid {
-            ui.monospace(format!("pid={pid}"));
-        }
-        if let Some(t) = p.create_time_unix {
-            ui.monospace(format!("create_time_unix={t}"));
-            if let Some(utc) = crate::util::time::unix_seconds_to_utc_string(t) {
-                ui.monospace(format!("create_time_utc={utc}"));
+        ui.label(egui::RichText::new("Process").strong());
+        if let Some(p) = &report.process {
+            if let Some(img) = &p.main_image {
+                ui.monospace(format!("image={img}"));
             }
-        }
-        if let Some(il) = p.integrity_level {
-            ui.monospace(format!("integrity_level={il}"));
-        }
-        if let Some(f) = p.execute_flags {
-            ui.monospace(format!("execute_flags=0x{f:08X}"));
-        }
-        if let Some(pp) = p.protected_process {
-            ui.monospace(format!("protected_process={pp}"));
-        }
-    } else {
-        ui.label("No MiscInfo stream (process fields unavailable).");
-    }
-
-    ui.add_space(12.0);
-    ui.label(egui::RichText::new("Recovered Exec Artifacts").strong());
-    ui.label("Best-effort scan of dump memory for command-line like strings (not guaranteed).");
-
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        ui.label("Filter:");
-        ui.text_edit_singleline(&mut app.ui.process_filter);
-        if ui.button("Clear##process_filter").clicked() {
-            app.ui.process_filter.clear();
-        }
-    });
-
-    let filter = app.ui.process_filter.trim().to_ascii_lowercase();
-
-    egui::ScrollArea::vertical()
-        .id_source("exec_artifacts_scroll")
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            for (idx, a) in report.exec_artifacts.iter().enumerate() {
-                if !filter.is_empty()
-                    && !a.image.to_ascii_lowercase().contains(&filter)
-                    && !a.command_line.to_ascii_lowercase().contains(&filter)
-                {
-                    continue;
+            if let Some(v) = &p.main_image_version {
+                ui.monospace(format!("version={v}"));
+            }
+            if let Some(pid) = p.pid {
+                ui.monospace(format!("pid={pid}"));
+            }
+            if let Some(t) = p.create_time_unix {
+                ui.monospace(format!("create_time_unix={t}"));
+                if let Some(utc) = crate::util::time::unix_seconds_to_utc_string(t) {
+                    ui.monospace(format!("create_time_utc={utc}"));
                 }
+            }
+            if let Some(il) = p.integrity_level {
+                ui.monospace(format!("integrity_level={il}"));
+            }
+            if let Some(f) = p.execute_flags {
+                ui.monospace(format!("execute_flags=0x{f:08X}"));
+            }
+            if let Some(pp) = p.protected_process {
+                ui.monospace(format!("protected_process={pp}"));
+            }
+        } else {
+            ui.label("No MiscInfo stream (process fields unavailable).");
+        }
 
-                ui.push_id(idx, |ui| {
-                    let selected = app.ui.selected_exec_artifact == Some(idx);
+        ui.add_space(12.0);
+        ui.label(egui::RichText::new("Recovered Exec Artifacts").strong());
+        ui.label("Best-effort scan of dump memory for command-line like strings (not guaranteed).");
 
-                    ui.horizontal(|ui| {
-                        if ui
-                            .selectable_label(selected, format!("#{idx}"))
-                            .clicked()
-                        {
-                            app.ui.selected_exec_artifact = Some(idx);
-                        }
-                        ui.monospace(match a.encoding {
-                            crate::model::ExecArtifactEncoding::Ascii => "ascii",
-                            crate::model::ExecArtifactEncoding::Utf16Le => "utf16le",
-                        });
-                        ui.monospace(&a.image);
-                        if let Some(addr) = a.address {
-                            ui.monospace(format!("addr=0x{addr:016X}"));
-                        }
-                    });
-                    ui.add_space(2.0);
-                    ui.add(egui::Label::new(&a.command_line).wrap(true));
-
-                    ui.add_space(6.0);
-                    ui.separator();
-                    ui.add_space(6.0);
-                });
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.label("Filter:");
+            ui.text_edit_singleline(&mut app.ui.process_filter);
+            if ui.button("Clear##process_filter").clicked() {
+                app.ui.process_filter.clear();
             }
         });
 
-    if let Some(idx) = app.ui.selected_exec_artifact {
-        if let Some(a) = report.exec_artifacts.get(idx) {
-            ui.add_space(10.0);
-            ui.separator();
-            ui.add_space(10.0);
-            ui.label(egui::RichText::new("Selected Artifact").strong());
-            ui.monospace(format!("image={}", a.image));
-            if let Some(addr) = a.address {
-                ui.monospace(format!("address=0x{addr:016X}"));
+        let filter = app.ui.process_filter.trim().to_ascii_lowercase();
+
+        egui::ScrollArea::vertical()
+            .id_source("exec_artifacts_scroll")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for (idx, a) in report.exec_artifacts.iter().enumerate() {
+                    if !filter.is_empty()
+                        && !a.image.to_ascii_lowercase().contains(&filter)
+                        && !a.command_line.to_ascii_lowercase().contains(&filter)
+                    {
+                        continue;
+                    }
+
+                    ui.push_id(idx, |ui| {
+                        let selected = app.ui.selected_exec_artifact == Some(idx);
+
+                        ui.horizontal(|ui| {
+                            if ui.selectable_label(selected, format!("#{idx}")).clicked() {
+                                app.ui.selected_exec_artifact = Some(idx);
+                            }
+                            ui.monospace(match a.encoding {
+                                crate::model::ExecArtifactEncoding::Ascii => "ascii",
+                                crate::model::ExecArtifactEncoding::Utf16Le => "utf16le",
+                            });
+                            ui.monospace(&a.image);
+                            if let Some(addr) = a.address {
+                                ui.monospace(format!("addr=0x{addr:016X}"));
+                            }
+                        });
+                        ui.add_space(2.0);
+                        ui.add(egui::Label::new(&a.command_line).wrap(true));
+
+                        ui.add_space(6.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                    });
+                }
+            });
+
+        if let Some(idx) = app.ui.selected_exec_artifact {
+            if let Some(a) = report.exec_artifacts.get(idx) {
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(10.0);
+                ui.label(egui::RichText::new("Selected Artifact").strong());
+                ui.monospace(format!("image={}", a.image));
+                if let Some(addr) = a.address {
+                    ui.monospace(format!("address=0x{addr:016X}"));
+                }
+                ui.add_space(6.0);
+                egui::ScrollArea::vertical()
+                    .id_source("selected_artifact_scroll")
+                    .max_height(140.0)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.add(egui::Label::new(&a.command_line).wrap(true));
+                    });
             }
-            ui.add_space(6.0);
-            egui::ScrollArea::vertical()
-                .id_source("selected_artifact_scroll")
-                .max_height(140.0)
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.add(egui::Label::new(&a.command_line).wrap(true));
-                });
         }
-    }
     });
 }
 
@@ -360,10 +360,7 @@ fn memory(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
                         let selected = app.ui.selected_injected_region == Some(idx);
 
                         ui.horizontal(|ui| {
-                            if ui
-                                .selectable_label(selected, format!("#{idx}"))
-                                .clicked()
-                            {
+                            if ui.selectable_label(selected, format!("#{idx}")).clicked() {
                                 app.ui.selected_injected_region = Some(idx);
                             }
 

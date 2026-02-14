@@ -3,9 +3,7 @@ use crate::model::{ExecArtifactEncoding, ProcessExecArtifact};
 const MAX_SCAN_BYTES: usize = 32 * 1024 * 1024; // hard cap to keep UI responsive on full dumps
 const MAX_ARTIFACTS: usize = 200;
 
-pub fn extract_exec_artifacts(
-    dump: &minidump::Minidump<Vec<u8>>,
-) -> Vec<ProcessExecArtifact> {
+pub fn extract_exec_artifacts(dump: &minidump::Minidump<Vec<u8>>) -> Vec<ProcessExecArtifact> {
     // A minidump is a snapshot of a single process. It doesn't reliably contain
     // "child process list" data. We therefore do a best-effort scan for strings
     // that look like command-lines or LOLBin invocations.
@@ -138,18 +136,46 @@ fn is_likely_command_line(s: &str) -> bool {
 
     // Keep false positives low: require a strong indicator.
     let indicators = [
-        ".exe", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".jar", ".msi",
-        "powershell", "pwsh", "cmd.exe", "wscript", "cscript", "mshta",
-        "rundll32", "regsvr32", "schtasks", "wmic", "certutil", "bitsadmin",
-        "curl ", "wget ", "msbuild", "installutil", "python", "node ",
-        "dotnet", "java ", "bash", "/bin/sh",
+        ".exe",
+        ".bat",
+        ".cmd",
+        ".ps1",
+        ".vbs",
+        ".js",
+        ".jar",
+        ".msi",
+        "powershell",
+        "pwsh",
+        "cmd.exe",
+        "wscript",
+        "cscript",
+        "mshta",
+        "rundll32",
+        "regsvr32",
+        "schtasks",
+        "wmic",
+        "certutil",
+        "bitsadmin",
+        "curl ",
+        "wget ",
+        "msbuild",
+        "installutil",
+        "python",
+        "node ",
+        "dotnet",
+        "java ",
+        "bash",
+        "/bin/sh",
     ];
     if !indicators.iter().any(|k| lc.contains(k)) {
         return false;
     }
 
     // Avoid obvious binary/garbage strings.
-    let non_print = s.chars().filter(|c| !c.is_ascii() || c.is_control()).count();
+    let non_print = s
+        .chars()
+        .filter(|c| !c.is_ascii() || c.is_control())
+        .count();
     if non_print > 0 {
         return false;
     }
@@ -171,9 +197,7 @@ fn parse_image(command_line: &str) -> String {
         }
     }
 
-    let end = s
-        .find(char::is_whitespace)
-        .unwrap_or_else(|| s.len());
+    let end = s.find(char::is_whitespace).unwrap_or_else(|| s.len());
     img.push_str(&s[..end]);
     normalize_image(img)
 }
@@ -219,4 +243,3 @@ fn normalize_cmd_key(s: &str) -> String {
     }
     out
 }
-

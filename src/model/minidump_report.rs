@@ -22,10 +22,7 @@ pub struct MinidumpReport {
 
 impl MinidumpReport {
     pub fn last_thread_create_time_unix(&self) -> Option<u64> {
-        self.threads
-            .iter()
-            .filter_map(|t| t.create_time_unix)
-            .max()
+        self.threads.iter().filter_map(|t| t.create_time_unix).max()
     }
 
     pub fn detections(&self) -> Vec<Detection> {

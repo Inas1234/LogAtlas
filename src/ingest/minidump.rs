@@ -257,10 +257,7 @@ fn extract_process_info(
     if let Ok(misc) = dump.get_stream::<minidump::MinidumpMiscInfo>() {
         // The accessors return references for numeric fields; normalize to owned values.
         info.pid = misc.raw.process_id().copied();
-        info.create_time_unix = misc
-            .raw
-            .process_create_time()
-            .map(|t| *t as u64);
+        info.create_time_unix = misc.raw.process_create_time().map(|t| *t as u64);
         info.integrity_level = misc.raw.process_integrity_level().copied();
         info.execute_flags = misc.raw.process_execute_flags().copied();
         info.protected_process = misc.raw.protected_process().copied();

@@ -22,4 +22,3 @@ pub fn filetime_to_unix_seconds(filetime: u64) -> Option<u64> {
     let secs = filetime / FILETIME_TICKS_PER_SEC;
     secs.checked_sub(WINDOWS_TO_UNIX_EPOCH_SECS)
 }
-
