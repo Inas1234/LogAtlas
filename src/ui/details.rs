@@ -18,6 +18,7 @@ pub fn details_panel(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
         DetailsTab::Event => event_details(ui, app),
         DetailsTab::Overview => overview(ui, app),
         DetailsTab::Processes => processes(ui, app),
+        DetailsTab::Memory => memory(ui, app),
         DetailsTab::Modules => modules(ui, app),
         DetailsTab::Threads => threads(ui, app),
         DetailsTab::Exception => exception(ui, app),
@@ -42,6 +43,7 @@ fn tab_bar(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
         ui.add_enabled_ui(enabled, |ui| {
             ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Overview, "Overview");
             ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Processes, "Processes");
+            ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Memory, "Memory");
             ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Modules, "Modules");
             ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Threads, "Threads");
             ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Exception, "Exception");
@@ -241,84 +243,6 @@ fn processes(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
     ui.label(egui::RichText::new("Recovered Exec Artifacts").strong());
     ui.label("Best-effort scan of dump memory for command-line like strings (not guaranteed).");
 
-    ui.add_space(10.0);
-    ui.label(egui::RichText::new("Thread Timing").strong());
-    if let Some(last) = report.last_thread_create_time_unix() {
-        ui.monospace(format!("last_thread_create_time_unix={last}"));
-        if let Some(utc) = crate::util::time::unix_seconds_to_utc_string(last) {
-            ui.monospace(format!("last_thread_create_time_utc={utc}"));
-        }
-    } else {
-        ui.label("No thread creation timestamps available (ThreadInfoList stream missing).");
-    }
-
-    ui.add_space(12.0);
-    ui.label(egui::RichText::new("Injected / Exec Memory").strong());
-    ui.label("Best-effort: committed private executable allocations not backed by modules.");
-    if report.injected_regions.is_empty() {
-        ui.label("None detected (or MemoryInfoList stream missing).");
-    } else {
-        egui::ScrollArea::vertical()
-            .id_source("injected_regions_scroll")
-            .max_height(220.0)
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for (idx, r) in report.injected_regions.iter().enumerate() {
-                    ui.push_id(idx, |ui| {
-                        let selected = app.ui.selected_injected_region == Some(idx);
-
-                        ui.horizontal(|ui| {
-                            if ui
-                                .selectable_label(selected, format!("#{idx}"))
-                                .clicked()
-                            {
-                                app.ui.selected_injected_region = Some(idx);
-                            }
-
-                            ui.label(
-                                egui::RichText::new(r.risk.label())
-                                    .color(crate::ui::severity_color(r.risk))
-                                    .strong(),
-                            );
-                            ui.monospace(format!("base=0x{:016X}", r.base));
-                            if r.size != 0 {
-                                ui.monospace(format!("size=0x{:X}", r.size));
-                            }
-                            ui.monospace(format!("prot={}", r.protection));
-                        });
-
-                        if !r.reasons.is_empty() {
-                            ui.add_space(2.0);
-                            ui.add(egui::Label::new(r.reasons.join("; ")).wrap(true));
-                        }
-
-                        ui.add_space(6.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-                    });
-                }
-            });
-
-        if let Some(idx) = app.ui.selected_injected_region {
-            if let Some(r) = report.injected_regions.get(idx) {
-                ui.add_space(8.0);
-                ui.separator();
-                ui.add_space(8.0);
-                ui.label(egui::RichText::new("Selected Allocation").strong());
-                ui.monospace(format!("base=0x{:016X} size=0x{:X}", r.base, r.size));
-                ui.monospace(format!("protection={}", r.protection));
-                ui.monospace(format!("type={}", r.ty));
-                ui.monospace(format!("state={}", r.state));
-                if !r.reasons.is_empty() {
-                    ui.add_space(6.0);
-                    for reason in &r.reasons {
-                        ui.add(egui::Label::new(format!("- {reason}")).wrap(true));
-                    }
-                }
-            }
-        }
-    }
-
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         ui.label("Filter:");
@@ -391,6 +315,100 @@ fn processes(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
                 });
         }
     }
+    });
+}
+
+fn memory(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
+    let Some(report) = &app.dump_report else {
+        ui.label("Load a minidump to inspect memory.");
+        return;
+    };
+
+    ui.push_id("memory_tab", |ui| {
+        ui.label(egui::RichText::new("Memory Streams").strong());
+        if let Some(n) = report.memory_region_count {
+            ui.monospace(format!("memory_regions={n}"));
+        } else {
+            ui.monospace("memory_regions=-");
+        }
+        if let Some(n) = report.memory_region_64_count {
+            ui.monospace(format!("memory64_regions={n}"));
+        } else {
+            ui.monospace("memory64_regions=-");
+        }
+        if let Some(n) = report.memory_info_region_count {
+            ui.monospace(format!("memory_info_regions={n}"));
+        } else {
+            ui.monospace("memory_info_regions=-");
+        }
+
+        ui.add_space(12.0);
+        ui.label(egui::RichText::new("Injected / Exec Memory").strong());
+        ui.label("Best-effort: committed private executable allocations not backed by modules.");
+
+        if report.injected_regions.is_empty() {
+            ui.label("None detected (or MemoryInfoList stream missing).");
+            return;
+        }
+
+        egui::ScrollArea::vertical()
+            .id_source("memory_injected_regions_scroll")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for (idx, r) in report.injected_regions.iter().enumerate() {
+                    ui.push_id(idx, |ui| {
+                        let selected = app.ui.selected_injected_region == Some(idx);
+
+                        ui.horizontal(|ui| {
+                            if ui
+                                .selectable_label(selected, format!("#{idx}"))
+                                .clicked()
+                            {
+                                app.ui.selected_injected_region = Some(idx);
+                            }
+
+                            ui.label(
+                                egui::RichText::new(r.risk.label())
+                                    .color(crate::ui::severity_color(r.risk))
+                                    .strong(),
+                            );
+                            ui.monospace(format!("base=0x{:016X}", r.base));
+                            if r.size != 0 {
+                                ui.monospace(format!("size=0x{:X}", r.size));
+                            }
+                            ui.monospace(format!("prot={}", r.protection));
+                        });
+
+                        if !r.reasons.is_empty() {
+                            ui.add_space(2.0);
+                            ui.add(egui::Label::new(r.reasons.join("; ")).wrap(true));
+                        }
+
+                        ui.add_space(6.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+                    });
+                }
+            });
+
+        if let Some(idx) = app.ui.selected_injected_region {
+            if let Some(r) = report.injected_regions.get(idx) {
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new("Selected Allocation").strong());
+                ui.monospace(format!("base=0x{:016X} size=0x{:X}", r.base, r.size));
+                ui.monospace(format!("protection={}", r.protection));
+                ui.monospace(format!("type={}", r.ty));
+                ui.monospace(format!("state={}", r.state));
+                if !r.reasons.is_empty() {
+                    ui.add_space(6.0);
+                    for reason in &r.reasons {
+                        ui.add(egui::Label::new(format!("- {reason}")).wrap(true));
+                    }
+                }
+            }
+        }
     });
 }
 

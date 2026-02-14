@@ -14,6 +14,7 @@ pub struct MinidumpReport {
     pub injected_regions: Vec<InjectedRegion>,
     pub memory_region_count: Option<usize>,
     pub memory_region_64_count: Option<usize>,
+    pub memory_info_region_count: Option<usize>,
     pub modules: Vec<ModuleInfo>,
     pub threads: Vec<ThreadInfo>,
     pub exception: Option<ExceptionInfo>,

@@ -54,6 +54,10 @@ pub fn ingest(path: &Path) -> Result<IngestedMinidump> {
         report.memory_region_64_count = Some(mem64.iter().count());
     }
 
+    if let Ok(mi) = dump.get_stream::<minidump::MinidumpMemoryInfoList>() {
+        report.memory_info_region_count = Some(mi.iter().count());
+    }
+
     // Execution artifacts: best-effort string scan over dump memory.
     report.exec_artifacts = crate::ingest::minidump_exec::extract_exec_artifacts(&dump);
 

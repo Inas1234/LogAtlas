@@ -3,6 +3,7 @@ pub enum DetailsTab {
     Event,
     Overview,
     Processes,
+    Memory,
     Modules,
     Threads,
     Exception,
