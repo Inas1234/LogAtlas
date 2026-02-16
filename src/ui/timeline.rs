@@ -8,9 +8,39 @@ pub fn timeline_panel(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
     crate::ui::timeline_bar(ui, app);
     ui.add_space(8.0);
 
+    let mut info = 0usize;
+    let mut warning = 0usize;
+    let mut high = 0usize;
+    for ev in app.events.iter() {
+        match ev.severity {
+            crate::model::Severity::Info => info += 1,
+            crate::model::Severity::Warning => warning += 1,
+            crate::model::Severity::High => high += 1,
+        }
+    }
+    ui.horizontal_wrapped(|ui| {
+        ui.label(format!("Total {}", app.events.len()));
+        ui.colored_label(
+            crate::ui::severity_color(crate::model::Severity::Info),
+            format!("Info {info}"),
+        );
+        ui.colored_label(
+            crate::ui::severity_color(crate::model::Severity::Warning),
+            format!("Warn {warning}"),
+        );
+        ui.colored_label(
+            crate::ui::severity_color(crate::model::Severity::High),
+            format!("High {high}"),
+        );
+    });
+    ui.add_space(6.0);
+
     ui.horizontal(|ui| {
         ui.label("Filter:");
         ui.text_edit_singleline(&mut app.ui.filter);
+        if ui.button("Clear").clicked() {
+            app.ui.filter.clear();
+        }
     });
 
     ui.add_space(6.0);
@@ -25,7 +55,12 @@ pub fn timeline_panel(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
                 }
 
                 let selected = app.selected == Some(ev.id);
-                let label = format!("+{}ms  {:<4}  {}", ev.t_ms, ev.severity.label(), ev.title);
+                let label = format!(
+                    "+{:>4}ms  {:<4}  {}",
+                    ev.t_ms,
+                    ev.severity.label(),
+                    ev.title
+                );
                 let label = egui::RichText::new(label)
                     .monospace()
                     .color(crate::ui::severity_color(ev.severity));
@@ -35,7 +70,7 @@ pub fn timeline_panel(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
                         [ui.available_width(), 0.0],
                         egui::SelectableLabel::new(selected, label),
                     )
-                    .on_hover_text("Click to view details");
+                    .on_hover_text(format!("{}\nsource={}", ev.details, ev.source));
 
                 if response.clicked() {
                     app.selected = Some(ev.id);

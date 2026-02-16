@@ -1,6 +1,7 @@
 # Data Formats
 
-This document describes the internal model Log Atlas produces today. These types are intended to be the stable interface between ingestion/detectors and any UI/export layer.
+This document describes the internal model Log Atlas produces today.  
+These types are intended to be the interface between ingestion/detectors and UI/export layers.
 
 ## Normalized Events
 
@@ -10,8 +11,8 @@ This document describes the internal model Log Atlas produces today. These types
 - `t_ms`: milliseconds from session start (currently synthetic placeholders)
 - `severity`: `Info | Warning | High`
 - `title`: one-line label
-- `details`: multi-line text payload (human readable)
-- `source`: component identifier string (e.g. `ingest::minidump`, `detector::basic`)
+- `details`: multi-line human-readable payload
+- `source`: component identifier string (for example `ingest::minidump`, `detector::basic`)
 
 Events are stored in `EventStore` (`src/model/store.rs`), which assigns IDs and supports selection.
 
@@ -25,7 +26,7 @@ Events are stored in `EventStore` (`src/model/store.rs`), which assigns IDs and 
 - module/thread counts
 - exception one-liner (if present)
 
-Intended use: quick “overview” view and a cheap object to log/export.
+Intended use: quick overview and cheap export/log object.
 
 ## Minidump Report
 
@@ -38,12 +39,35 @@ Intended use: quick “overview” view and a cheap object to log/export.
 - `exception`: `ExceptionInfo` if the exception stream is present
 - memory region counts (when relevant streams exist)
 - derived:
-  - `exec_artifacts`: recovered command-line-like strings found in dump memory
+  - `exec_artifacts`: recovered command-line-like strings from dump memory
   - `injected_regions`: suspicious allocations derived from `MemoryInfoListStream`
+  - `stackwalk`: `StackwalkReport` with per-thread call stacks and frame-level symbol data
+  - `stackwalk_error`: non-fatal stackwalk failure detail
+
+### Stackwalk Types
+
+- `StackwalkReport`
+  - requesting thread id
+  - symbol path list used for lookup
+  - symbolicated frame count
+  - module-with-symbol count
+  - notes and thread stacks
+- `ThreadStackTrace`
+  - thread id/name
+  - stack status
+  - whether it is the requesting/crashing thread
+  - `frames: Vec<StackFrameInfo>`
+- `StackFrameInfo`
+  - instruction address
+  - module/module-base/module-offset
+  - function/function-offset
+  - optional source file/line
+  - trust label from unwinder
 
 ### Minidump Streams Used (Best-Effort)
 
-The minidump format is stream-based; many streams are optional. The engine attempts to read:
+The minidump format is stream-based and many streams are optional.  
+The engine attempts to read:
 
 - `MinidumpSystemInfo`
 - `MinidumpThreadList`
@@ -51,9 +75,8 @@ The minidump format is stream-based; many streams are optional. The engine attem
 - `MinidumpThreadInfoList` (optional; thread create time + start address)
 - `MinidumpModuleList`
 - `MinidumpMemoryList` and/or `MinidumpMemory64List`
-- `MinidumpMemoryInfoList` (required for “injected regions” heuristics)
+- `MinidumpMemoryInfoList` (required for injected-region heuristics)
 - `MinidumpException`
 - `MinidumpMiscInfo` (process metadata)
 
 If a stream is absent, the report leaves the corresponding field empty and detectors degrade gracefully.
-

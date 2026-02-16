@@ -4,10 +4,7 @@ use eframe::egui;
 
 pub fn details_panel(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
     ui.heading("Inspector");
-    ui.add_space(6.0);
-
-    crate::ui::timeline_bar(ui, app);
-    ui.add_space(10.0);
+    ui.add_space(8.0);
 
     header(ui, app);
     tab_bar(ui, app);
@@ -21,6 +18,7 @@ pub fn details_panel(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
         DetailsTab::Memory => memory(ui, app),
         DetailsTab::Modules => modules(ui, app),
         DetailsTab::Threads => threads(ui, app),
+        DetailsTab::Stacks => stacks(ui, app),
         DetailsTab::Exception => exception(ui, app),
         DetailsTab::Detections => detections(ui, app),
     }
@@ -30,13 +28,32 @@ fn header(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
     if let Some(path) = &app.dump_path {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Minidump").strong());
-            ui.monospace(path.display().to_string());
+            let display = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.display().to_string());
+            ui.monospace(display)
+                .on_hover_text(path.display().to_string());
+        });
+    }
+
+    if let Some(id) = app.selected
+        && let Some(ev) = app.events.get(id)
+    {
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(ev.severity.label())
+                    .color(crate::ui::severity_color(ev.severity))
+                    .strong(),
+            );
+            ui.monospace(format!("+{}ms", ev.t_ms));
+            ui.label(&ev.title);
         });
     }
 }
 
 fn tab_bar(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Event, "Event");
 
         let enabled = app.dump_report.is_some();
@@ -46,6 +63,7 @@ fn tab_bar(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
             ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Memory, "Memory");
             ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Modules, "Modules");
             ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Threads, "Threads");
+            ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Stacks, "Stacks");
             ui.selectable_value(&mut app.ui.details_tab, DetailsTab::Exception, "Exception");
             ui.selectable_value(
                 &mut app.ui.details_tab,
@@ -177,6 +195,25 @@ fn overview(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
         }
     } else {
         ui.label("No thread creation timestamps available (ThreadInfoList stream missing).");
+    }
+
+    ui.add_space(12.0);
+    ui.label(egui::RichText::new("Stackwalk").strong());
+    if let Some(sw) = &report.stackwalk {
+        ui.monospace(format!("threads={}", sw.threads.len()));
+        ui.monospace(format!("frames={}", sw.total_frames()));
+        ui.monospace(format!("symbolicated_frames={}", sw.symbolicated_frames));
+        ui.monospace(format!("modules_with_symbols={}", sw.modules_with_symbols));
+        if let Some(tid) = sw.requesting_thread_id {
+            ui.monospace(format!("requesting_thread=0x{tid:X}"));
+        }
+    } else if let Some(err) = &report.stackwalk_error {
+        ui.colored_label(
+            crate::ui::severity_color(crate::model::Severity::Warning),
+            format!("stackwalk_error={err}"),
+        );
+    } else {
+        ui.label("Stackwalk not attempted.");
     }
 
     ui.add_space(12.0);
@@ -581,6 +618,236 @@ fn threads(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
     }
 }
 
+fn stacks(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
+    let Some(report) = &app.dump_report else {
+        ui.label("Load a minidump to inspect call stacks.");
+        return;
+    };
+
+    let Some(sw) = &report.stackwalk else {
+        if let Some(err) = &report.stackwalk_error {
+            ui.colored_label(
+                crate::ui::severity_color(crate::model::Severity::Warning),
+                format!("Stackwalk failed: {err}"),
+            );
+        } else {
+            ui.label("No stackwalk output for this dump.");
+        }
+        return;
+    };
+
+    if app.ui.selected_stack_thread.is_none() {
+        app.ui.selected_stack_thread = sw
+            .requesting_thread_id
+            .or_else(|| sw.threads.first().map(|t| t.thread_id));
+    }
+
+    ui.group(|ui| {
+        ui.label(egui::RichText::new("Stackwalk Summary").strong());
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.monospace(format!("threads={}", sw.threads.len()));
+            ui.monospace(format!("frames={}", sw.total_frames()));
+            ui.monospace(format!("symbolicated={}", sw.symbolicated_frames));
+            ui.monospace(format!("modules_with_symbols={}", sw.modules_with_symbols));
+            if let Some(tid) = sw.requesting_thread_id {
+                ui.monospace(format!("requesting_thread=0x{tid:X}"));
+            }
+        });
+        if !sw.symbol_paths.is_empty() {
+            ui.add_space(4.0);
+            ui.small(format!("symbol paths: {}", sw.symbol_paths.join("; ")));
+        }
+        if !sw.notes.is_empty() {
+            ui.add_space(4.0);
+            for note in &sw.notes {
+                ui.add(egui::Label::new(format!("- {note}")).wrap(true));
+            }
+        }
+    });
+
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        ui.label("Filter:");
+        ui.text_edit_singleline(&mut app.ui.stack_filter);
+        if ui.button("Clear").clicked() {
+            app.ui.stack_filter.clear();
+        }
+    });
+    ui.add_space(6.0);
+
+    let filter = app.ui.stack_filter.trim().to_ascii_lowercase();
+    ui.columns(2, |cols| {
+        cols[0].label(egui::RichText::new("Threads").strong());
+        cols[0].add_space(4.0);
+        egui::ScrollArea::vertical()
+            .id_source("stacks_threads_scroll")
+            .auto_shrink([false, false])
+            .show(&mut cols[0], |ui| {
+                for t in &sw.threads {
+                    let top = t
+                        .frames
+                        .first()
+                        .map(stack_frame_short)
+                        .unwrap_or_else(|| "-".into());
+                    let name = t.thread_name.as_deref().unwrap_or("-");
+                    let tid_s = format!("0x{:X}", t.thread_id);
+                    if !filter.is_empty()
+                        && !tid_s.to_ascii_lowercase().contains(&filter)
+                        && !name.to_ascii_lowercase().contains(&filter)
+                        && !top.to_ascii_lowercase().contains(&filter)
+                    {
+                        continue;
+                    }
+
+                    let selected = app.ui.selected_stack_thread == Some(t.thread_id);
+                    let row = format!("{}  {}  [{}]  {}", tid_s, name, t.frames.len(), top);
+                    let response = ui.selectable_label(selected, row);
+                    if response.clicked() {
+                        app.ui.selected_stack_thread = Some(t.thread_id);
+                    }
+                    if !selected {
+                        let color = stack_status_color(&t.status);
+                        ui.small(egui::RichText::new(format!("status: {}", t.status)).color(color));
+                    }
+                    ui.add_space(4.0);
+                }
+            });
+
+        cols[1].label(egui::RichText::new("Frames").strong());
+        cols[1].add_space(4.0);
+        let Some(tid) = app.ui.selected_stack_thread else {
+            cols[1].label("Select a thread.");
+            return;
+        };
+        let Some(thread) = sw.threads.iter().find(|t| t.thread_id == tid) else {
+            cols[1].label("Selected thread not found.");
+            return;
+        };
+
+        cols[1].horizontal_wrapped(|ui| {
+            ui.monospace(format!("thread=0x{:X}", thread.thread_id));
+            if let Some(name) = &thread.thread_name {
+                ui.monospace(format!("name={name}"));
+            }
+            ui.colored_label(
+                stack_status_color(&thread.status),
+                format!("status={}", thread.status),
+            );
+            if thread.is_requesting_thread {
+                ui.label("crash/requesting");
+            }
+        });
+        cols[1].add_space(4.0);
+
+        egui::ScrollArea::vertical()
+            .id_source("selected_stack_frames_scroll")
+            .auto_shrink([false, false])
+            .show(&mut cols[1], |ui| {
+                for frame in &thread.frames {
+                    ui.horizontal(|ui| {
+                        ui.monospace(format!("{:02}", frame.index));
+                        ui.monospace(format!("0x{:016X}", frame.instruction));
+
+                        let module_short = frame
+                            .module
+                            .as_deref()
+                            .map(compact_path)
+                            .unwrap_or_else(|| "-".into());
+                        let module_resp = ui.monospace(module_short);
+                        if let Some(module) = &frame.module {
+                            module_resp.on_hover_text(module);
+                        }
+
+                        let function = stack_function_label(frame);
+                        let function_resp = ui.label(function);
+                        if let Some(func) = &frame.function {
+                            function_resp.on_hover_text(func);
+                        }
+
+                        let source = stack_source_label(frame);
+                        let source_resp = ui.small(source.clone());
+                        if source != "-" {
+                            source_resp.on_hover_text(source);
+                        }
+
+                        ui.small(
+                            egui::RichText::new(&frame.trust)
+                                .color(stack_status_color(&frame.trust)),
+                        );
+                    });
+                    ui.separator();
+                }
+            });
+    });
+}
+
+fn stack_frame_short(frame: &crate::model::StackFrameInfo) -> String {
+    let module = frame
+        .module
+        .as_deref()
+        .map(compact_path)
+        .unwrap_or_else(|| "<unknown>".into());
+    if let Some(function) = &frame.function {
+        return format!("{module}!{function}");
+    }
+    if let Some(offset) = frame.module_offset {
+        format!("{module}+0x{offset:X}")
+    } else {
+        format!("{module}!0x{:X}", frame.instruction)
+    }
+}
+
+fn stack_function_label(frame: &crate::model::StackFrameInfo) -> String {
+    if let Some(name) = &frame.function {
+        if let Some(off) = frame.function_offset {
+            format!("{name}+0x{off:X}")
+        } else {
+            name.clone()
+        }
+    } else if let Some(off) = frame.module_offset {
+        format!("+0x{off:X}")
+    } else {
+        "-".into()
+    }
+}
+
+fn stack_source_label(frame: &crate::model::StackFrameInfo) -> String {
+    match (&frame.source_file, frame.source_line) {
+        (Some(file), Some(line)) => format!("{}:{line}", compact_path(file)),
+        (Some(file), None) => compact_path(file),
+        _ => "-".into(),
+    }
+}
+
+fn compact_path(path: &str) -> String {
+    let compact = path.rsplit(['\\', '/']).next().unwrap_or(path);
+    if compact.is_empty() {
+        path.to_string()
+    } else {
+        compact.to_string()
+    }
+}
+
+fn stack_status_color(status: &str) -> egui::Color32 {
+    let s = status.to_ascii_lowercase();
+    if s == "ok"
+        || s == "context"
+        || s == "prewalked"
+        || s == "cfi"
+        || s == "cfi_scan"
+        || s == "callframeinfo"
+        || s == "frame_pointer"
+        || s == "scan"
+    {
+        egui::Color32::from_rgb(120, 210, 150)
+    } else if s.contains("missing") || s.contains("unsupported") || s.contains("skipped") {
+        egui::Color32::from_rgb(255, 170, 0)
+    } else {
+        egui::Color32::from_rgb(180, 180, 180)
+    }
+}
+
 fn exception(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
     let Some(report) = &app.dump_report else {
         ui.label("Load a minidump to inspect the exception stream.");
@@ -598,6 +865,49 @@ fn exception(ui: &mut egui::Ui, app: &mut LogAtlasApp) {
     ui.monospace(format!("flags=0x{:08X}", exc.flags));
     ui.monospace(format!("address=0x{:016X}", exc.address));
     ui.monospace(format!("number_parameters={}", exc.number_parameters));
+
+    ui.add_space(10.0);
+    ui.label(egui::RichText::new("Exception Thread Stack").strong());
+    let Some(stack) = report.exception_stack() else {
+        ui.label("No stackwalk data available for the exception thread.");
+        return;
+    };
+
+    ui.monospace(format!(
+        "thread_id=0x{:X} status={} frames={}",
+        stack.thread_id,
+        stack.status,
+        stack.frames.len()
+    ));
+    egui::ScrollArea::vertical()
+        .id_source("exception_stack_preview_scroll")
+        .max_height(220.0)
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            for f in stack.frames.iter().take(20) {
+                let mut line = format!("#{:<2} 0x{:016X} ", f.index, f.instruction);
+                if let Some(module) = &f.module {
+                    line.push_str(module);
+                } else {
+                    line.push('-');
+                }
+                line.push('!');
+                if let Some(function) = &f.function {
+                    line.push_str(function);
+                } else {
+                    line.push_str("<unknown>");
+                }
+                if let Some(off) = f.function_offset {
+                    line.push_str(&format!("+0x{off:X}"));
+                } else if let Some(off) = f.module_offset {
+                    line.push_str(&format!("+0x{off:X}"));
+                }
+                ui.monospace(line);
+            }
+            if stack.frames.len() > 20 {
+                ui.label(format!("... ({} more)", stack.frames.len() - 20));
+            }
+        });
 }
 
 fn detections(ui: &mut egui::Ui, app: &mut LogAtlasApp) {

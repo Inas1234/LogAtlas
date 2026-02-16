@@ -7,17 +7,47 @@ use crate::model::Severity;
 use eframe::egui;
 
 pub fn render_app(ctx: &egui::Context, frame: &mut eframe::Frame, app: &mut LogAtlasApp) {
+    apply_visuals(ctx);
     top_bar(ctx, frame, app);
 
     egui::SidePanel::left("timeline_panel")
         .resizable(true)
-        .default_width(420.0)
+        .default_width(400.0)
+        .min_width(300.0)
         .show(ctx, |ui| timeline::timeline_panel(ui, app));
 
     egui::CentralPanel::default().show(ctx, |ui| details::details_panel(ui, app));
 
     about_window(ctx, app);
     status_bar(ctx, app);
+}
+
+fn apply_visuals(ctx: &egui::Context) {
+    let visuals_applied_id = egui::Id::new("log_atlas_visuals_applied");
+    let already_applied =
+        ctx.data_mut(|d| d.get_persisted::<bool>(visuals_applied_id).unwrap_or(false));
+    if already_applied {
+        return;
+    }
+    ctx.data_mut(|d| d.insert_persisted(visuals_applied_id, true));
+
+    let mut style = (*ctx.style()).clone();
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    style.spacing.button_padding = egui::vec2(10.0, 4.0);
+    style.spacing.window_margin = egui::Margin::symmetric(10.0, 8.0);
+    ctx.set_style(style);
+
+    let mut visuals = egui::Visuals::dark();
+    visuals.override_text_color = Some(egui::Color32::from_rgb(222, 226, 232));
+    visuals.panel_fill = egui::Color32::from_rgb(21, 24, 29);
+    visuals.window_fill = egui::Color32::from_rgb(21, 24, 29);
+    visuals.extreme_bg_color = egui::Color32::from_rgb(12, 14, 18);
+    visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(28, 32, 38);
+    visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(36, 42, 50);
+    visuals.widgets.active.bg_fill = egui::Color32::from_rgb(44, 55, 68);
+    visuals.selection.bg_fill = egui::Color32::from_rgb(34, 114, 166);
+    visuals.selection.stroke.color = egui::Color32::from_rgb(140, 200, 245);
+    ctx.set_visuals(visuals);
 }
 
 fn top_bar(ctx: &egui::Context, frame: &mut eframe::Frame, app: &mut LogAtlasApp) {

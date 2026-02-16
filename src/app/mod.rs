@@ -52,6 +52,8 @@ impl LogAtlasApp {
         self.ui.selected_injected_region = None;
         self.ui.selected_module = None;
         self.ui.selected_thread = None;
+        self.ui.selected_stack_thread = None;
+        self.ui.stack_filter.clear();
         Ok(())
     }
 }

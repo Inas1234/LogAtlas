@@ -18,6 +18,10 @@ pub struct MinidumpReport {
     pub modules: Vec<ModuleInfo>,
     pub threads: Vec<ThreadInfo>,
     pub exception: Option<ExceptionInfo>,
+    /// Optional stackwalk output produced from minidump stack unwinding.
+    pub stackwalk: Option<StackwalkReport>,
+    /// Non-fatal stackwalk failure reason.
+    pub stackwalk_error: Option<String>,
 }
 
 impl MinidumpReport {
@@ -86,6 +90,23 @@ impl MinidumpReport {
         }
 
         out
+    }
+
+    pub fn exception_stack(&self) -> Option<&ThreadStackTrace> {
+        let tid = self.exception.as_ref()?.thread_id;
+        self.stackwalk
+            .as_ref()?
+            .threads
+            .iter()
+            .find(|t| t.thread_id == tid)
+    }
+
+    pub fn stackwalk_thread(&self, thread_id: u32) -> Option<&ThreadStackTrace> {
+        self.stackwalk
+            .as_ref()?
+            .threads
+            .iter()
+            .find(|t| t.thread_id == thread_id)
     }
 }
 
@@ -235,6 +256,46 @@ pub struct ExceptionInfo {
     pub flags: u32,
     pub address: u64,
     pub number_parameters: u32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct StackwalkReport {
+    pub requesting_thread_id: Option<u32>,
+    /// Search paths used for Breakpad .sym lookup.
+    pub symbol_paths: Vec<String>,
+    pub symbolicated_frames: usize,
+    pub modules_with_symbols: usize,
+    pub notes: Vec<String>,
+    pub threads: Vec<ThreadStackTrace>,
+}
+
+impl StackwalkReport {
+    pub fn total_frames(&self) -> usize {
+        self.threads.iter().map(|t| t.frames.len()).sum()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ThreadStackTrace {
+    pub thread_id: u32,
+    pub thread_name: Option<String>,
+    pub status: String,
+    pub is_requesting_thread: bool,
+    pub frames: Vec<StackFrameInfo>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StackFrameInfo {
+    pub index: usize,
+    pub instruction: u64,
+    pub module: Option<String>,
+    pub module_base: Option<u64>,
+    pub module_offset: Option<u64>,
+    pub function: Option<String>,
+    pub function_offset: Option<u64>,
+    pub source_file: Option<String>,
+    pub source_line: Option<u32>,
+    pub trust: String,
 }
 
 #[derive(Clone, Debug)]

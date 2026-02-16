@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 
 use crate::model::{
     Event, EventId, EventStore, ExceptionInfo, MinidumpReport, MinidumpSummary, ModuleInfo,
-    ProcessInfo, Severity, ThreadInfo,
+    ProcessInfo, Severity, StackwalkReport, ThreadInfo, ThreadStackTrace,
 };
 
 pub struct IngestedMinidump {
@@ -84,6 +84,15 @@ pub fn ingest(path: &Path) -> Result<IngestedMinidump> {
         ));
     }
 
+    match crate::ingest::minidump_stackwalk::extract_stackwalk(&dump) {
+        Ok(stackwalk) => {
+            report.stackwalk = Some(stackwalk);
+        }
+        Err(err) => {
+            report.stackwalk_error = Some(err.to_string());
+        }
+    }
+
     let mut t_ms = 0u64;
     let mut events: Vec<Event> = Vec::new();
 
@@ -133,7 +142,7 @@ pub fn ingest(path: &Path) -> Result<IngestedMinidump> {
     // Note: we intentionally don't spam the timeline with "modules/threads enumerated".
     // Those are available in dedicated tabs (Overview/Modules/Threads).
 
-    if let Ok(exc) = dump.get_stream::<minidump::MinidumpException>() {
+    if let Some(exc) = &report.exception {
         t_ms += 10;
         events.push(Event {
             id: EventId(0),
@@ -142,11 +151,45 @@ pub fn ingest(path: &Path) -> Result<IngestedMinidump> {
             title: "Exception stream present".into(),
             details: format!(
                 "thread_id={}\ncode=0x{:08X}\naddress=0x{:016X}",
-                exc.thread_id,
-                exc.raw.exception_record.exception_code,
-                exc.raw.exception_record.exception_address
+                exc.thread_id, exc.code, exc.address
             ),
             source: "ingest::minidump".into(),
+        });
+    }
+
+    if let Some(sw) = &report.stackwalk {
+        t_ms += 10;
+        events.push(Event {
+            id: EventId(0),
+            t_ms,
+            severity: Severity::Info,
+            title: "Stackwalk completed".into(),
+            details: format_stackwalk_summary(sw),
+            source: "ingest::stackwalk".into(),
+        });
+
+        if let Some(stack) = report.exception_stack()
+            && !stack.frames.is_empty()
+        {
+            t_ms += 5;
+            events.push(Event {
+                id: EventId(0),
+                t_ms,
+                severity: Severity::Info,
+                title: "Exception thread call stack".into(),
+                details: format_exception_stack_preview(stack, 10),
+                source: "ingest::stackwalk".into(),
+            });
+        }
+    } else if let Some(err) = &report.stackwalk_error {
+        t_ms += 10;
+        events.push(Event {
+            id: EventId(0),
+            t_ms,
+            severity: Severity::Warning,
+            title: "Stackwalk failed".into(),
+            details: err.clone(),
+            source: "ingest::stackwalk".into(),
         });
     }
 
@@ -325,6 +368,57 @@ fn format_exec_artifacts(arts: &[crate::model::ProcessExecArtifact], limit: usiz
     }
     if arts.len() > limit {
         out.push_str(&format!("... ({} more)\n", arts.len() - limit));
+    }
+    out
+}
+
+fn format_stackwalk_summary(sw: &StackwalkReport) -> String {
+    let mut lines = Vec::new();
+    lines.push(format!("threads_walked={}", sw.threads.len()));
+    lines.push(format!("total_frames={}", sw.total_frames()));
+    lines.push(format!("symbolicated_frames={}", sw.symbolicated_frames));
+    lines.push(format!("modules_with_symbols={}", sw.modules_with_symbols));
+    if let Some(tid) = sw.requesting_thread_id {
+        lines.push(format!("requesting_thread=0x{tid:X}"));
+    }
+    if !sw.symbol_paths.is_empty() {
+        lines.push(format!("symbol_paths={}", sw.symbol_paths.join("; ")));
+    }
+    if !sw.notes.is_empty() {
+        lines.push(String::new());
+        lines.push("Notes:".to_string());
+        for n in &sw.notes {
+            lines.push(format!("- {n}"));
+        }
+    }
+    lines.join("\n")
+}
+
+fn format_exception_stack_preview(stack: &ThreadStackTrace, limit: usize) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "thread_id=0x{:X} name={}\nframes={}\n\n",
+        stack.thread_id,
+        stack.thread_name.as_deref().unwrap_or("-"),
+        stack.frames.len()
+    ));
+
+    for frame in stack.frames.iter().take(limit) {
+        let func = frame.function.as_deref().unwrap_or("<unknown>");
+        let module = frame.module.as_deref().unwrap_or("<no-module>");
+        out.push_str(&format!(
+            "#{:02} 0x{:016X} {}!{}",
+            frame.index, frame.instruction, module, func
+        ));
+        if let Some(off) = frame.function_offset {
+            out.push_str(&format!("+0x{off:X}"));
+        } else if let Some(off) = frame.module_offset {
+            out.push_str(&format!("+0x{off:X}"));
+        }
+        out.push('\n');
+    }
+    if stack.frames.len() > limit {
+        out.push_str(&format!("... ({} more)\n", stack.frames.len() - limit));
     }
     out
 }

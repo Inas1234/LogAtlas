@@ -13,11 +13,10 @@ The engine is designed to:
 
 ## Data Flow (Today)
 
-Text diagram:
-
 1. `minidump file (.dmp/.mdmp)`
 2. `src/ingest/minidump.rs`
    - stream extraction
+   - stackwalking and optional symbolication
    - derived signals (exec artifacts, suspicious allocations)
    - detector pass (report -> detections)
    - event synthesis (summary/detections -> `EventStore`)
@@ -32,18 +31,21 @@ Text diagram:
 
 - `src/ingest/minidump.rs`
   - Orchestrator: read file, parse minidump, pull optional streams, build `MinidumpSummary` and `MinidumpReport`, then synthesize `EventStore`.
+- `src/ingest/minidump_stackwalk.rs`
+  - Runs `minidump-processor` stack unwinding and maps thread/frame output into app model types.
+  - Uses Breakpad `.sym` paths from environment variables and local `./symbols` when present.
 - `src/ingest/minidump_exec.rs`
   - Heuristic string scanning over dump memory to recover likely command-lines (ASCII + UTF-16LE).
 - `src/ingest/minidump_injection.rs`
   - Heuristic analysis of `MemoryInfoListStream` to flag suspicious private executable allocations and correlate them with thread start addresses and recovered strings.
 - `src/model/*`
   - Stable-ish internal model:
-    - `MinidumpSummary`: small overview, good for “first screen”.
+    - `MinidumpSummary`: small overview for initial triage.
     - `MinidumpReport`: deeper extracted facts + derived signals.
     - `Detection`: human-readable finding (severity + title + details).
     - `Event`/`EventStore`: normalized timeline for UI/export.
 - `src/app/*`
-  - UI-facing state + “load dump” integration.
+  - UI-facing state + load/open wiring.
 - `src/ui/*`
   - `egui` panels and selection state; intended to remain thin.
 
@@ -55,4 +57,3 @@ Text diagram:
   - correlation across multiple sources (when the project grows beyond single dumps)
 - Exporters:
   - JSON report/event export for automation and CI pipelines
-

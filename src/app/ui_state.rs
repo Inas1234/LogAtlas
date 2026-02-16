@@ -6,6 +6,7 @@ pub enum DetailsTab {
     Memory,
     Modules,
     Threads,
+    Stacks,
     Exception,
     Detections,
 }
@@ -30,4 +31,6 @@ pub struct UiState {
     pub thread_filter: String,
     pub selected_module: Option<usize>,
     pub selected_thread: Option<u32>,
+    pub stack_filter: String,
+    pub selected_stack_thread: Option<u32>,
 }

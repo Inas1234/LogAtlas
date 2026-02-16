@@ -6,7 +6,8 @@ mod store;
 pub use event::{Event, EventId, Severity};
 pub use minidump_report::{
     Detection, ExceptionInfo, ExecArtifactEncoding, InjectedRegion, MinidumpReport, ModuleInfo,
-    ProcessExecArtifact, ProcessInfo, ThreadInfo,
+    ProcessExecArtifact, ProcessInfo, StackFrameInfo, StackwalkReport, ThreadInfo,
+    ThreadStackTrace,
 };
 pub use minidump_summary::MinidumpSummary;
 pub use store::EventStore;

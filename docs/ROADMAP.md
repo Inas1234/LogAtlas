@@ -1,6 +1,6 @@
 # Roadmap
 
-This is a pragmatic direction for turning Log Atlas into a general log analyzer while keeping the “engine first” philosophy.
+This is a pragmatic direction for turning Log Atlas into a general log analyzer while keeping an engine-first philosophy.
 
 ## Near Term
 
@@ -14,15 +14,16 @@ This is a pragmatic direction for turning Log Atlas into a general log analyzer 
 
 ## Minidump Depth
 
-- Stackwalking + symbolication (optional):
-  - recover call stacks for the exception thread and selected threads
-  - integrate symbol servers / local PDB caches (Windows) with a clear caching model
+- Improve stackwalk + symbols:
+  - add configurable symbol-provider backends beyond local Breakpad `.sym`
+  - evaluate PDB/symbol-server friendly workflows and cache policy
+  - enrich frame data with stronger source/inline presentation in UI
 - More stream coverage:
   - handle additional streams when present (handles, unloaded modules, memory maps, etc.)
 - Stronger detectors:
   - correlate exception address with module ranges
   - flag suspicious module metadata (odd timestamps, missing versions, etc.)
-  - add “suspicious thread start” module resolution and context in UI
+  - add suspicious thread-start module resolution and context in UI
 
 ## General Log Analyzer
 
@@ -34,4 +35,3 @@ This is a pragmatic direction for turning Log Atlas into a general log analyzer 
   - unify different inputs into the same `Event` model (plus source-specific report payloads)
 - Correlation:
   - multi-file sessions and cross-source correlation using stable identifiers
-
